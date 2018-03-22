@@ -1,8 +1,6 @@
 from flask import Flask, jsonify, abort, make_response, url_for, redirect, render_template, session,request,g
-
-
 from app import app,api,mongo,users,tasks,auth
-from .models import  TaskListAPI, TaskAPI
+from .models import  TaskListAPI, TaskAPI,UserAPI
 from passlib.apps import custom_app_context as pwd_context
 from itsdangerous import TimedJSONWebSignatureSerializer as Serializer, SignatureExpired, BadSignature
 
@@ -10,10 +8,10 @@ from itsdangerous import TimedJSONWebSignatureSerializer as Serializer, Signatur
 # api.add_resource(UserAPI, '/users/<int:id>', endpoint = 'user')
 api.add_resource(TaskListAPI, '/todo/api/v1.0/tasks', endpoint = 'tasks')
 api.add_resource(TaskAPI, '/todo/api/v1.0/tasks/<int:id>', endpoint = 'task')
+api.add_resource(UserAPI, '/api/users', endpoint = 'users')
 
 
-
-@auth.verify_password
+@auth.verify_password 
 def verify_password(username_or_token, password):
     s = Serializer(app.config['SECRET_KEY'])
     data =None
@@ -34,6 +32,38 @@ def verify_password(username_or_token, password):
     return True
 
 
+@auth.error_handler
+def unauthorized():
+    return make_response(jsonify({'error': 'Unauthorized access'}), 403)
+
+
+
+@app.errorhandler(404)
+def not_found(error):
+    if type(error.description) == type('errro'):
+        return make_response(jsonify({'error': 'Not found'}), 404)
+    response = jsonify({'message': error.description['message']})
+    return response
+    # return make_response(jsonify({'error': 'Not found'}), 404)
+
+@app.route('/')
+@auth.login_required
+def index():
+    return "Hello, {}!".format(auth.username())   
+
+@app.route('/api/resource')
+@auth.login_required
+def get_resource():
+    return jsonify({'data': 'Hello, %s!' % g.user['username']})
+
+@app.route('/api/users/<int:userid>')
+def get_user(userid):
+    user = users.find_one({'id': userid})
+    if not user:
+        abort(400)
+    return jsonify({'username': user['username']})
+
+
 @app.route('/api/token')
 @auth.login_required
 def get_auth_token():
@@ -45,56 +75,27 @@ def get_auth_token():
 
 
 
-@auth.error_handler
-def unauthorized():
-    return make_response(jsonify({'error': 'Unauthorized access'}), 403)
-
-@app.errorhandler(404)
-def not_found(error):
-    return make_response(jsonify({'error': 'Not found'}), 404)
-
-
-@app.route('/')
-@auth.login_required
-def index():
-    return "Hello, {}!".format(auth.username())
-
-
-@app.route('/api/users', methods=['POST'])
-def new_user():
-    username = request.json.get('username')
-    password = request.json.get('password')
-    if username is None or password is None:
-        abort(400)  # missing arguments
-    if users.find_one({'username': username}) is not None:
-        abort(400)  # existing user
-    password_hash = pwd_context.encrypt(password)
-    userid = int(users.count()) + 1
-    user = {'id': userid, 'username': username, 'password': password_hash}
-    users.insert(user)
-    return jsonify({
-        'username': username
-    }), 201, {
-        'Location': url_for('get_user', userid=userid, _external=True)
-    }
-    # return jsonify({
-    #     'Location':
-    #     url_for('get_user', userid=userid, _external=True)
-    # })
+# @app.route('/api/users', methods=['POST'])
+# def new_user():
+#     username = request.json.get('username')
+#     password = request.json.get('password')
+#     if username is None or password is None:
+#         abort(400)  # missing arguments
+#     if users.find_one({'username': username}) is not None:
+#         abort(400)  # existing user
+#     password_hash = pwd_context.encrypt(password)
+#     userid = int(users.count()) + 1
+#     user = {'id': userid, 'username': username, 'password': password_hash}
+#     users.insert(user)
+#     return jsonify({
+#         'username': username
+#     }), 201, {
+#         'Location': url_for('get_user', userid=userid, _external=True)
+#     }
 
 
-@app.route('/api/users/<int:userid>')
-def get_user(userid):
-    user = users.find_one({'id': userid})
-    if not user:
-        abort(400)
-    return jsonify({'username': user['username']})
 
 
-@app.route('/api/resource')
-@auth.login_required
-def get_resource():
-    return jsonify({'data': 'Hello, %s!' % g.user['username']})
 
 
 # @app.route('/todo/api/v1.0/tasks', methods=['POST'])
